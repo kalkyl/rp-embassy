@@ -26,15 +26,14 @@ fn main() -> ! {
     let mut pac = unsafe { pac::Peripherals::steal() };
     let mut sio = hal::sio::Sio::new(pac.SIO);
     let mut mc = Multicore::new(&mut pac.PSM, &mut pac.PPB, &mut sio.fifo);
-
     let cores = mc.cores();
     let core1 = &mut cores[1];
-    let _core1 = core1.spawn(unsafe { &mut CORE1_STACK.mem }, move || {
-        let executor1 = EXECUTOR0.init(Executor::new());
+    let _ = core1.spawn(unsafe { &mut CORE1_STACK.mem }, move || {
+        let executor1 = EXECUTOR1.init(Executor::new());
         executor1.run(|spawner| unwrap!(spawner.spawn(core1_task(led))));
     });
 
-    let executor0 = EXECUTOR1.init(Executor::new());
+    let executor0 = EXECUTOR0.init(Executor::new());
     executor0.run(|spawner| unwrap!(spawner.spawn(core0_task())));
 }
 
