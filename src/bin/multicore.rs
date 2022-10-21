@@ -3,18 +3,20 @@
 #![feature(type_alias_impl_trait)]
 
 use defmt::*;
-use embassy_executor::raw::TaskPool;
 use embassy_executor::Executor;
+use embassy_executor::_export::StaticCell;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::PIN_25;
 use embassy_time::{Duration, Timer};
-use futures::Future;
 use hal::multicore::{Multicore, Stack};
 use hal::pac;
 use rp2040_hal as hal;
 use {defmt_rtt as _, panic_probe as _};
 
 static mut CORE1_STACK: Stack<4096> = Stack::new();
+
+static EXECUTOR0: StaticCell<Executor> = StaticCell::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -28,27 +30,15 @@ fn main() -> ! {
     let cores = mc.cores();
     let core1 = &mut cores[1];
     let _core1 = core1.spawn(unsafe { &mut CORE1_STACK.mem }, move || {
-        run_executor(1, core1_task(led))
+        let executor1 = EXECUTOR0.init(Executor::new());
+        executor1.run(|spawner| unwrap!(spawner.spawn(core1_task(led))));
     });
 
-    run_executor(0, core0_task())
+    let executor0 = EXECUTOR1.init(Executor::new());
+    executor0.run(|spawner| unwrap!(spawner.spawn(core0_task())));
 }
 
-fn run_executor<F: Future + 'static>(id: u8, f: F) -> ! {
-    let mut task_pool = TaskPool::<F, 1>::new();
-    let task_pool: &mut TaskPool<F, 1> = unsafe { core::mem::transmute(&mut task_pool) };
-
-    let mut executor: Executor = Executor::new();
-    let executor: &mut Executor = unsafe { core::mem::transmute(&mut executor) };
-
-    info!("Starting Core {} executor...", id);
-
-    executor.run(|spawner| {
-        let token = task_pool.spawn(move || f);
-        spawner.must_spawn(token);
-    });
-}
-
+#[embassy_executor::task]
 async fn core1_task(mut led: Output<'static, PIN_25>) {
     loop {
         led.toggle();
@@ -56,6 +46,7 @@ async fn core1_task(mut led: Output<'static, PIN_25>) {
     }
 }
 
+#[embassy_executor::task]
 async fn core0_task() {
     loop {
         info!("Hello from CORE0");
