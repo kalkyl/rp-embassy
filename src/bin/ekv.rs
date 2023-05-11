@@ -13,17 +13,17 @@ use embassy_rp::peripherals::FLASH;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use {defmt_rtt as _, panic_probe as _};
 
-pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
+const FLASH_SIZE: usize = 2 * 1024 * 1024;
 extern "C" {
     // Flash storage used for configuration
     static __config_start: u32;
 }
 
-pub struct DbFlash<'a>(pub Flash<'a, FLASH, FLASH_SIZE>);
+struct DbFlash<'a>(Flash<'a, FLASH, FLASH_SIZE>);
 
 // Workaround for alignment requirements.
 #[repr(C, align(4))]
-pub struct AlignedBuf([u8; ERASE_SIZE]);
+struct AlignedBuf([u8; ERASE_SIZE]);
 
 impl<'a> flash::Flash for DbFlash<'a> {
     type Error = embassy_rp::flash::Error;
