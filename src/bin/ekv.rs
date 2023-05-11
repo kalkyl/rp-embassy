@@ -11,6 +11,7 @@ use embassy_executor::Spawner;
 use embassy_rp::flash::{Flash, ERASE_SIZE};
 use embassy_rp::peripherals::FLASH;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_time::Duration;
 use {defmt_rtt as _, panic_probe as _};
 
 const FLASH_SIZE: usize = 2 * 1024 * 1024;
@@ -19,7 +20,10 @@ extern "C" {
     static __config_start: u32;
 }
 
-struct DbFlash<'a>(Flash<'a, FLASH, FLASH_SIZE>);
+struct DbFlash<'a> {
+    start: usize,
+    flash: Flash<'a, FLASH, FLASH_SIZE>,
+}
 
 // Workaround for alignment requirements.
 #[repr(C, align(4))]
@@ -33,10 +37,9 @@ impl<'a> flash::Flash for DbFlash<'a> {
     }
 
     async fn erase(&mut self, page_id: PageID) -> Result<(), <DbFlash<'a> as flash::Flash>::Error> {
-        let start = unsafe { &__config_start as *const u32 as usize };
-        self.0.erase(
-            (start + page_id.index() * config::PAGE_SIZE) as u32,
-            (start + page_id.index() * config::PAGE_SIZE + config::PAGE_SIZE) as u32,
+        self.flash.erase(
+            (self.start + page_id.index() * config::PAGE_SIZE) as u32,
+            (self.start + page_id.index() * config::PAGE_SIZE + config::PAGE_SIZE) as u32,
         )
     }
 
@@ -46,10 +49,9 @@ impl<'a> flash::Flash for DbFlash<'a> {
         offset: usize,
         data: &mut [u8],
     ) -> Result<(), <DbFlash<'a> as flash::Flash>::Error> {
-        let start = unsafe { &__config_start as *const u32 as usize };
-        let address = start + page_id.index() * config::PAGE_SIZE + offset;
+        let address = self.start + page_id.index() * config::PAGE_SIZE + offset;
         let mut buf = AlignedBuf([0; ERASE_SIZE]);
-        self.0.read(address as u32, &mut buf.0[..data.len()])?;
+        self.flash.read(address as u32, &mut buf.0[..data.len()])?;
         data.copy_from_slice(&buf.0[..data.len()]);
         Ok(())
     }
@@ -60,11 +62,10 @@ impl<'a> flash::Flash for DbFlash<'a> {
         offset: usize,
         data: &[u8],
     ) -> Result<(), <DbFlash<'a> as flash::Flash>::Error> {
-        let start = unsafe { &__config_start as *const u32 as usize };
-        let address = start + page_id.index() * config::PAGE_SIZE + offset;
+        let address = self.start + page_id.index() * config::PAGE_SIZE + offset;
         let mut buf = AlignedBuf([0; ERASE_SIZE]);
         buf.0[..data.len()].copy_from_slice(data);
-        self.0.write(address as u32, &buf.0[..data.len()])
+        self.flash.write(address as u32, &buf.0[..data.len()])
     }
 }
 
@@ -72,7 +73,10 @@ impl<'a> flash::Flash for DbFlash<'a> {
 async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    let flash = DbFlash(Flash::<_, FLASH_SIZE>::new(p.FLASH));
+    let flash = DbFlash {
+        flash: Flash::<_, FLASH_SIZE>::new(p.FLASH),
+        start: unsafe { &__config_start as *const u32 as usize },
+    };
     let db = Database::<_, NoopRawMutex>::new(flash, ekv::Config::default());
 
     if db.mount().await.is_err() {
@@ -91,5 +95,6 @@ async fn main(_spawner: Spawner) {
         info!("HELLO: {:a}", s);
     }
 
+    embassy_time::Timer::after(Duration::from_secs(1)).await;
     cortex_m::asm::bkpt();
 }
