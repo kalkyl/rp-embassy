@@ -33,10 +33,10 @@ impl<'a> flash::Flash for DbFlash<'a> {
     }
 
     async fn erase(&mut self, page_id: PageID) -> Result<(), <DbFlash<'a> as flash::Flash>::Error> {
-        let from = unsafe { &__config_start as *const u32 as usize };
+        let start = unsafe { &__config_start as *const u32 as usize };
         self.0.erase(
-            (from + page_id.index() * config::PAGE_SIZE) as u32,
-            (from + page_id.index() * config::PAGE_SIZE + config::PAGE_SIZE) as u32,
+            (start + page_id.index() * config::PAGE_SIZE) as u32,
+            (start + page_id.index() * config::PAGE_SIZE + config::PAGE_SIZE) as u32,
         )
     }
 
