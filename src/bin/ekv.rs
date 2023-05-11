@@ -46,7 +46,7 @@ impl<'a> flash::Flash for DbFlash<'a> {
         offset: usize,
         data: &mut [u8],
     ) -> Result<(), <DbFlash<'a> as flash::Flash>::Error> {
-        let start: usize = unsafe { &__config_start as *const u32 as usize };
+        let start = unsafe { &__config_start as *const u32 as usize };
         let address = start + page_id.index() * config::PAGE_SIZE + offset;
         let mut buf = AlignedBuf([0; ERASE_SIZE]);
         self.0.read(address as u32, &mut buf.0[..data.len()])?;
@@ -64,8 +64,7 @@ impl<'a> flash::Flash for DbFlash<'a> {
         let address = start + page_id.index() * config::PAGE_SIZE + offset;
         let mut buf = AlignedBuf([0; ERASE_SIZE]);
         buf.0[..data.len()].copy_from_slice(data);
-        self.0.write(address as u32, &buf.0[..data.len()])?;
-        Ok(())
+        self.0.write(address as u32, &buf.0[..data.len()])
     }
 }
 
